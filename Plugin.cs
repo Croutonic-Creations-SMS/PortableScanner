@@ -104,11 +104,6 @@ namespace PortableScanner
                         box = Singleton<IDManager>.Instance.Boxes.FirstOrDefault((BoxSO i) => i.BoxSize == product.GridLayoutInBox.boxSize).BoxPrefab;
                     }
 
-                   /* if (slot == null && label != null)
-                    {
-                        slot = label.m_RackSlot;
-                    }*/
-
                     if(label != null)
                     {
                         if (Input.GetKey(KeyCode.LeftControl) && box != null && slot != null)
