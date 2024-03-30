@@ -9,6 +9,7 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using System.Reflection;
 using System.Linq;
+using RainbowArt.CleanFlatUI;
 
 namespace PortableScanner
 {
@@ -25,6 +26,8 @@ namespace PortableScanner
         private ConfigEntry<KeyCode> scanKey;
         private KeyboardShortcut scanKeyFillShelf;
         private ConfigEntry<bool> fillShelfFeature;
+
+        private PopupMessage popupMessage;
 
         private void Awake()
         {
@@ -60,6 +63,8 @@ namespace PortableScanner
             };
 
             Harmony.CreateAndPatchAll(typeof(Patches));
+
+            popupMessage = gameObject.GetOrAddComponent<PopupMessage>();
         }
 
         public void LogError(string message, int times = 1)
@@ -73,8 +78,9 @@ namespace PortableScanner
         {          
             if (_interaction == null) return;
 
-            if(Input.GetKeyDown(scanKey.Value))
+            if (Input.GetKeyDown(scanKey.Value))
             {
+
                 GameObject hitObject = GetRaycastObject();
 
                 Label label = null;
@@ -104,11 +110,6 @@ namespace PortableScanner
                         box = Singleton<IDManager>.Instance.Boxes.FirstOrDefault((BoxSO i) => i.BoxSize == product.GridLayoutInBox.boxSize).BoxPrefab;
                     }
 
-                   /* if (slot == null && label != null)
-                    {
-                        slot = label.m_RackSlot;
-                    }*/
-
                     if(label != null)
                     {
                         if (Input.GetKey(KeyCode.LeftControl) && box != null && slot != null)
@@ -127,11 +128,55 @@ namespace PortableScanner
             }
         }
 
+        public int RemoveProductFromCart(ItemQuantity productData)
+        {
+            foreach (ItemQuantity itemQuantity in cart.m_CartData.ProductInCarts)
+            {
+                if(itemQuantity.FirstItemID == productData.FirstItemID)
+                {
+                    if(itemQuantity.FirstItemCount < productData.FirstItemCount)
+                    {
+                        productData.FirstItemCount = itemQuantity.FirstItemCount;
+                    }
+
+                    itemQuantity.FirstItemCount -= productData.FirstItemCount;
+
+                    if(itemQuantity.FirstItemCount == 0)
+                    {
+                        cart.RemoveProduct(productData, SalesType.PRODUCT);
+                    }
+
+                    cart.UpdateTotalPrice();
+
+                    using (List<CartItem>.Enumerator enumerator2 = cart.m_CartItems.GetEnumerator())
+                    {
+                        while (enumerator2.MoveNext())
+                        {
+                            CartItem cartItem = enumerator2.Current;
+                            if (cartItem.SalesItem.FirstItemID == productData.FirstItemID)
+                            {
+                                cartItem.UpdateTotalPrice();
+                                break;
+                            }
+                        }
+                        return productData.FirstItemCount;
+                    }
+                }
+            }
+            return 0;
+        }
+
         private void ModifyCart(Label label, int quantity = 1)
         {
+            if(cart.CartMaxed())
+            {
+                popupMessage.ShowToast($"Scan failed, cart is full!", 3f);
+                return;
+            }
             if (quantity == 0) return;
 
             int product_id = label.DisplaySlot != null ? label.DisplaySlot.ProductID : label.m_RackSlot.Data.ProductID;
+            ProductSO product = Singleton<IDManager>.Instance.ProductSO(product_id);
 
             ItemQuantity salesItem = new ItemQuantity
             {
@@ -141,11 +186,29 @@ namespace PortableScanner
                 }
             };
 
-            if(quantity < 0) {
-                cart.RemoveProduct(salesItem, SalesType.PRODUCT);
+            double price = Math.Round(Singleton<PriceManager>.Instance.CurrentCost(product_id) * quantity, 2);
+
+            string action_word = "Scanned";
+
+            if (quantity < 0) {
+                quantity = RemoveProductFromCart(salesItem);
+
+                if (quantity < 1)
+                {
+                    popupMessage.ShowToast($"Scan failed, cart does not contain the scanned item!", 3f);
+                    return;
+                }
+
+                //cart.RemoveProduct(salesItem, SalesType.PRODUCT);
+                action_word = "Removed";
             } else if (cart.TryAddProduct(salesItem, SalesType.PRODUCT)) {
                 //do nothing
             }
+
+            double cart_total = Math.Round(cart.m_OrderTotalPrice, 2);
+
+            //\n(Cart Balance: ${cart.m_OrderTotalPrice})
+            popupMessage.ShowToast($"{action_word} {Math.Abs(quantity)} {product.ProductName} @ ${price} (${price*quantity})", 3f);
 
             Singleton<SFXManager>.Instance.PlayScanningProductSFX();
         }

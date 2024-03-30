@@ -12,7 +12,7 @@ namespace PortableScanner
         static void ComputerStartPrefix(Computer __instance)
         {
             ComputerOperatingSystem os;
-            Plugin.Instance.LogError($"TEST] {__instance.TryGetComponent<ComputerOperatingSystem>(out os)}", 5);
+            __instance.TryGetComponent<ComputerOperatingSystem>(out os);
 
             BaseWindow cart_window = os.GetAppWindowByName("Market");
 
